@@ -1,0 +1,17 @@
+# except for .gitignore
+!.gitignore
+
+#logs
+*.log
+#intellij idea files
+*.impl
+*.iml
+*.ipr
+*.iws
+
+
+# compiled source dirs
+target
+out
+tmp
+.idea

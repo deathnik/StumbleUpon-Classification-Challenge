@@ -16,12 +16,25 @@ object Main {
 
   def main(args: Array[String]) {
     val mainData = loadData("../train.tsv")
-    val splitedData = util.Random.shuffle(mainData).splitAt((mainData.length * 1.0).toInt)
+    var splitedData = util.Random.shuffle(mainData).splitAt((mainData.length * 0.7).toInt)
     var weightedSet = train(splitedData._1)
     var posScore = 0
     var negScore = 0
+    for(line <- splitedData._2){
+      if(line(26) == classify(line, weightedSet)){
+        posScore += 1
+      }
+      else {
+        negScore += 1
+      }
+    }
+    println(1.0 * posScore/(negScore+posScore))
+
     var file = (new File("result.csv"))
     file.delete();
+
+    splitedData = util.Random.shuffle(mainData).splitAt((mainData.length * 1.0).toInt)
+    weightedSet = train(splitedData._1)
     val output:Output = Resource.fromFile("result.csv")
     val testDate = loadData("../test.tsv")
     output.write("urlid,label\n")
@@ -66,16 +79,16 @@ object Main {
     var catClassify = (classify._1.get(line(3)).get, classify._2.get(line(3)).get)
     for (word <- line(2).split("[ \":.,?-]").filter(s => s.length > 3)) {
       if (catClassify._1.get(word) != None && catClassify._2.get(word) != None) {
-        var div = (catClassify._1.get(word).get + catClassify._2.get(word).get) * (catClassify._1.get(word).get + catClassify._2.get(word).get)
+        var div = (catClassify._1.get(word).get + catClassify._2.get(word).get)
         scorePos += catClassify._1.get(word).get/div
         scoreNeg += catClassify._2.get(word).get/div
       }
       else if (catClassify._1.get(word) == None && catClassify._2.get(word) == None) {}
       else if (catClassify._1.get(word) == None){
-        scoreNeg += 1.0/( catClassify._2.get(word).get * catClassify._2.get(word).get)
+        scoreNeg += 1.0/( catClassify._2.get(word).get )
       }
       else {
-        scorePos +=  1.0/(catClassify._1.get(word).get  * catClassify._1.get(word).get)
+        scorePos +=  1.0/(catClassify._1.get(word).get)
       }
 
     }

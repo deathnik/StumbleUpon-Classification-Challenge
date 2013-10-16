@@ -19,6 +19,13 @@
             <artifactId>scala-io-file_2.10</artifactId>
             <version>0.4.2</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.json4s</groupId>
+            <artifactId>json4s-native_2.10</artifactId>
+            <version>3.2.5</version>
+        </dependency>
+
     </dependencies>
 
 </project>

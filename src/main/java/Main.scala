@@ -5,7 +5,7 @@ import scala.collection.{mutable, immutable}
 import scalax.io.{Output, Resource}
 import org.json4s._
 import org.json4s.native.JsonMethods._
-
+import classifiers.BranchOfCategoryKnns
 /**
  * User: deathnik
  * Date: 9/26/13
@@ -14,7 +14,7 @@ import org.json4s.native.JsonMethods._
 object Main {
   val zero = int2Integer(0)
   var alchemeryCategorySet = mutable.Set[String]()
-  var wordSet = Set[String]("for", "you", "your", "body", "title", "have")
+  val branchKnns = new BranchOfCategoryKnns()
 
   def splitingFunction(text: String): Array[String] = text.toLowerCase().split("[^a-zA-Z-]").filter(s => s.length > 2)
 
@@ -23,6 +23,7 @@ object Main {
     val mainData = loadData("../train.tsv")
     val testDate = loadData("../test.tsv")
     for (line <- mainData) alchemeryCategorySet += line(3)
+
     /*for(cat <- alchemeryCategorySet){
       println(cat)
       getStatistics(true,line =>line(3)==cat && line(17)=="1"   && line(26) == "1",  line=>line(3)==cat && line(17)=="1" && line(26) == "0", mainData)
@@ -34,22 +35,30 @@ object Main {
       println(i)
       getAverage(l => l(i).replace("?","-1").toDouble,l => l(3)=="health" && l(26)=="1",l => l(3)=="health" && l(26)=="0", mainData)
     }  */
+    //val indexes = List(5,10,13,15,16,19,24,25)
+    val ind = List(10, 13, 15, 16, 19, 24)
+    branchKnns.build(mainData, ind,-10.0,alchemeryCategorySet)
     test(mainData, s => true)
 
     val file = new File("result.csv")
     file.delete()
+
 
     val weightedSet = train(mainData)
     //dumpSet(weightedSet)
     val output: Output = Resource.fromFile("result.csv")
     output.write("urlid,label\n")
     for (line <- testDate) {
-      output.write(line(1) + "," + classify(line, weightedSet) + "\n")
+      var res = branchKnns.advancePrediction(line,0.5)
+      val bayesRes = classify(line, weightedSet)
+      res =  (res * bayesRes) / ( res * bayesRes + (1.0 - res)* (1-bayesRes))
+      output.write(line(1) + "," + (res*1000).round/1000.0 + "\n")
     }
   }
 
+
   def dumpSet(weightedSet: (HashMap[String, mutable.HashMap[String, Int]], HashMap[String, mutable.HashMap[String, Int]])) {
-    val dump: Output = Resource.fromFile("../statistics/words");
+    val dump: Output = Resource.fromFile("../statistics/words")
     for (w <- weightedSet._1.iterator) {
       dump.write("\n")
       dump.write(w._1 + "\n")
@@ -81,8 +90,10 @@ object Main {
     var trueNeg = 0
     var falseNeg = 0
     for (line <- lines) {
-
-      if (line(26) == ( if(classify(line, weightedSet)<0.5) "0" else "1")) {
+      var prediction = classify(line, weightedSet)
+      val branchPred = branchKnns.advancePrediction(line,0.5)
+      prediction = (prediction * branchPred) /((prediction * branchPred)+ (1.0- prediction) * (1.0-branchPred))
+      if (line(26) == ( if(prediction<0.5) "0" else "1")) {
         if (line(26) == "1") truePos += 1
         else trueNeg += 1
       }
@@ -155,7 +166,7 @@ object Main {
         else targetMap.update(word, targetMap.get(word).get + 1)
       }
     }
-    return (posClassif, negClassif)
+    (posClassif, negClassif)
   }
 
   def classify(line: Array[String], classify: (HashMap[String, mutable.HashMap[String, Int]], HashMap[String, mutable.HashMap[String, Int]])): Double = {
@@ -163,8 +174,8 @@ object Main {
     var scoreNeg = 0.0
     val words = splitingFunction(line(2))
     val occur = words.groupBy((word: String) => word).mapValues(_.length)
-    var character = 1.0 * words.size / occur.size
-    /*if(occur.size < 20){
+    /*var character = 1.0 * words.size / occur.size
+    if(occur.size < 20){
       println(line(26) + "  " + occur.size+" " + line(2))
       for(w <- occur){
         println(w._1 + " "+w._2)
@@ -187,12 +198,12 @@ object Main {
       }
 
     }
-    return 1.0*(scorePos+1)/(scorePos+scoreNeg+2)
+    1.0*(scorePos+1)/(scorePos+scoreNeg+2)
   }
 
 
   def cleanAndSplitToArray(text: String): Array[String] = {
-    var json = parse(text.replace("\"\"", "\""))
+    val json = parse(text.replace("\"\"", "\""))
     for {
       JObject(child) <- json
       JField("title", JString(body)) <- child

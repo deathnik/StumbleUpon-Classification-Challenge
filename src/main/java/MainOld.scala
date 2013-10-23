@@ -11,7 +11,7 @@ import classifiers.BranchOfCategoryKnns
  * Date: 9/26/13
  * Time: 12:54 AM
  */
-object Main {
+object MainOld {
   val zero = int2Integer(0)
   var alchemeryCategorySet = mutable.Set[String]()
   val branchKnns = new BranchOfCategoryKnns()
@@ -19,7 +19,7 @@ object Main {
   def splitingFunction(text: String): Array[String] = text.toLowerCase().split("[^a-zA-Z-]").filter(s => s.length > 2)
 
 
-  def main(args: Array[String]) {
+  def mainOld(args: Array[String]) {
     val mainData = loadData("../train.tsv")
     val testDate = loadData("../test.tsv")
     for (line <- mainData) alchemeryCategorySet += line(3)

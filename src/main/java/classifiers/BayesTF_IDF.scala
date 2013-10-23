@@ -1,13 +1,14 @@
 package classifiers
 
 import scala.collection.mutable
+import org.apache.mahout.classifier.evaluation.Auc
 
-class BayesTF_IDF(_alchemeryCategorySet: mutable.Set[String], _splitingFunction: String => Array[String]) {
-  var alchemeryCategorySet = _alchemeryCategorySet
-  var splitingFunction: String => Array[String] = _splitingFunction
-
+class BayesTF_IDF(alchemyCategorySet: mutable.Set[String], splittingFunction: String => Array[String]) {
+  val wordsToTake = 24
   var sizes = mutable.HashMap.empty[String, Int]
   val collections = mutable.HashMap[String, mutable.HashMap[String, Int]]()
+
+  val hostsPoints = mutable.HashMap.empty[String, Int]
 
 
   def train(data: List[Array[String]]) {
@@ -15,40 +16,67 @@ class BayesTF_IDF(_alchemeryCategorySet: mutable.Set[String], _splitingFunction:
   }
 
   def prepareCollections(data: List[Array[String]], sizes: mutable.HashMap[String, Int]) {
-    for (cat <- alchemeryCategorySet) {
+    for (cat <- alchemyCategorySet) {
       sizes += (cat -> 0)
       collections += ("0" + cat -> mutable.HashMap[String, Int]())
       collections += ("1" + cat -> mutable.HashMap[String, Int]())
     }
 
-   for (line <- data) {
+    for (line <- data) {
       val targetMap = collections.get(line(26) + line(3)).get
-      for (word <- splitingFunction(line(2)).toSet[String]) {
+      for (word <- splittingFunction(line(2)).toSet[String]) {
         if (targetMap.get(word) == None) targetMap.+=(word -> 1)
         else targetMap.update(word, targetMap.get(word).get + 1)
       }
-      sizes.update(line(3), sizes.get(line(3)).get +1)
+      sizes.update(line(3), sizes.get(line(3)).get + 1)
+      val hostKey = buildHostMapKey(line)
+      if (hostsPoints.get(line(26) + hostKey) == None) hostsPoints += (line(26) +hostKey -> 1)
+      else hostsPoints.update(line(26) + hostKey, hostsPoints.get(line(26) + hostKey).get + 1)
     }
   }
+
+  def buildHostMapKey(line:Array[String]):String ={
+    val host =  new java.net.URL(line(0)).getHost
+    "_" + line(3) +"_" + host
+  }
+
+  // ._1 - positive, ._2 -negative
+  def getCounts(w:String,category:String):(Int,Int)=
+    (collections.get("1" + category).get.get(w), collections.get("0" + category).get.get(w))  match  {
+      case (None,None)  => (0,0)
+      case (x,None) => (x.get, 0)
+      case (None,y) => (0,y.get)
+      case (x,y) => (x.get, y.get)
+    }
+
 
   def classify(line: Array[String]): Double = {
     var posScore = 0.000000001
     var negScore = 0.000000001
-    val words = _splitingFunction(line(2))
-    val size = words.length
+    val words = splittingFunction(line(2))
     val occur = countWords(words)
+    val weightedWordSet = mutable.HashMap.empty[String,Double]
     for (w: String <- words.toSet.seq) {
-      val TF = 1.0 * occur.get(w).get / size
-      var posOccur = 0
-      var negOccur = 0
-      if (collections.get("1" + line(3)).get.get(w) != None) posOccur = collections.get("1" + line(3)).get.get(w).get
-      if (collections.get("0" + line(3)).get.get(w) != None) negOccur = collections.get("0" + line(3)).get.get(w).get
-      if (negOccur + posOccur >= 1) {
-        val IDF = Math.log(sizes(line(3)) / (negOccur + posOccur))
-        posScore += TF * IDF * posOccur / (posOccur + negOccur)
-        negScore += TF * IDF * negOccur / (posOccur + negOccur)
+      val TF = 1.0 * occur.get(w).get / words.length
+      val counts = getCounts(w,line(3))
+      if (counts._1 + counts._2 >= 1) {
+        val IDF = Math.log(sizes(line(3)) / (counts._1 + counts._2))
+        if(weightedWordSet.get(w)== None )  weightedWordSet += (w -> TF*IDF)
+        else weightedWordSet.update(w, weightedWordSet.get(w).get+TF*IDF)
       }
     }
+
+    val array = weightedWordSet.toArray.sortBy(_._2).reverse.take(wordsToTake)
+
+    for(wordWeightPair <- array){
+      val counts = getCounts(wordWeightPair._1,line(3))
+      posScore += wordWeightPair._2 * counts._1 / (counts._1 + counts._2)
+      negScore += wordWeightPair._2 * counts._2 / (counts._1 + counts._2)
+    }
+
+    val levelOfTrust = doWeTrustHost(line)
+    posScore *= levelOfTrust
+    negScore *= (1-levelOfTrust)
     posScore / (posScore + negScore)
   }
 
@@ -62,26 +90,24 @@ class BayesTF_IDF(_alchemeryCategorySet: mutable.Set[String], _splitingFunction:
   }
 
   def testScoreOnDataset(data: List[Array[String]], testName: String) {
-    var truePos = 0
-    var falsePos = 0
-    var trueNeg = 0
-    var falseNeg = 0
-    for (line <- data) {
+    val auc = new Auc()
+    for(line <- data){
       val prediction = classify(line)
-      if (line(26) == (if (prediction < 0.5) "0" else "1")) {
-        if (line(26) == "1") truePos += 1
-        else trueNeg += 1
-      }
-      else {
-        if (line(26) == "0") falsePos += 1
-        else falseNeg += 1
-      }
+      auc.add(line(26).toInt, prediction)
     }
-    println()
-    println("Count:" + data.length)
-    println(testName + 1.0 * (truePos + trueNeg) / (truePos + trueNeg + falseNeg + falsePos))
-    println(trueNeg + " | " + falseNeg)
-    println(falsePos + " | " + truePos)
+
+    if(data.size > 0)
+      println(testName + "  " + auc.auc())
+
+  }
+
+  def doWeTrustHost(line:Array[String]):Double = {
+    val hostKey = buildHostMapKey(line)
+    var pos = 1
+    var neg = 1
+    if(hostsPoints.get("1"+hostKey) != None) pos+=hostsPoints.get("1"+hostKey).get
+    if(hostsPoints.get("0"+hostKey) != None) neg+=hostsPoints.get("0"+hostKey).get
+    1.0*pos/(pos+neg)
   }
 
 }

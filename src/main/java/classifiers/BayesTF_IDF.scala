@@ -8,7 +8,6 @@ class BayesTF_IDF(alchemyCategorySet: mutable.Set[String], splittingFunction: St
   var sizes = mutable.HashMap.empty[String, Int]
   val collections = mutable.HashMap[String, mutable.HashMap[String, Int]]()
 
-  val hostsPoints = mutable.HashMap.empty[String, Int]
 
 
   def train(data: List[Array[String]]) {
@@ -29,16 +28,9 @@ class BayesTF_IDF(alchemyCategorySet: mutable.Set[String], splittingFunction: St
         else targetMap.update(word, targetMap.get(word).get + 1)
       }
       sizes.update(line(3), sizes.get(line(3)).get + 1)
-      val hostKey = buildHostMapKey(line)
-      if (hostsPoints.get(line(26) + hostKey) == None) hostsPoints += (line(26) +hostKey -> 1)
-      else hostsPoints.update(line(26) + hostKey, hostsPoints.get(line(26) + hostKey).get + 1)
     }
   }
 
-  def buildHostMapKey(line:Array[String]):String ={
-    val host =  new java.net.URL(line(0)).getHost
-    "_" + line(3) +"_" + host
-  }
 
   // ._1 - positive, ._2 -negative
   def getCounts(w:String,category:String):(Int,Int)=
@@ -74,9 +66,6 @@ class BayesTF_IDF(alchemyCategorySet: mutable.Set[String], splittingFunction: St
       negScore += wordWeightPair._2 * counts._2 / (counts._1 + counts._2)
     }
 
-    val levelOfTrust = doWeTrustHost(line)
-    posScore *= levelOfTrust
-    negScore *= (1-levelOfTrust)
     posScore / (posScore + negScore)
   }
 
@@ -99,15 +88,6 @@ class BayesTF_IDF(alchemyCategorySet: mutable.Set[String], splittingFunction: St
     if(data.size > 0)
       println(testName + "  " + auc.auc())
 
-  }
-
-  def doWeTrustHost(line:Array[String]):Double = {
-    val hostKey = buildHostMapKey(line)
-    var pos = 1
-    var neg = 1
-    if(hostsPoints.get("1"+hostKey) != None) pos+=hostsPoints.get("1"+hostKey).get
-    if(hostsPoints.get("0"+hostKey) != None) neg+=hostsPoints.get("0"+hostKey).get
-    1.0*pos/(pos+neg)
   }
 
 }

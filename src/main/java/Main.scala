@@ -21,7 +21,7 @@ object Main {
 
     testClassifier(data, s => true)
 
-    //classifyAndOutputResult(data)
+    classifyAndOutputResult(data)
   }
 
   def loadData(s: String): List[Array[String]] =
